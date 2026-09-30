@@ -1,7 +1,5 @@
 import streamlit as st
-import requests
-
-API_URL = "http://127.0.0.1:8000/chat"
+from src.graph import query_rag
 
 st.set_page_config(page_title="Agentic AI RAG Chatbot", page_icon="🤖", layout="wide")
 
@@ -32,7 +30,7 @@ with st.sidebar:
 
     st.divider()
     st.markdown("### System Specs")
-    st.markdown("🟢 **Backend Status**: Online")
+    st.markdown("🟢 **Backend Status**: Integrated")
     st.markdown("🗄️ **Vector DB**: Pinecone Serverless")
     st.markdown("🧠 **Models**: `text-embedding-3-small`, `gpt-4o-mini`, `gpt-4o` (Judge)")
 
@@ -65,31 +63,27 @@ if query:
     with st.chat_message("assistant"):
         with st.spinner("Retrieving -> Expanding Queries -> Generating -> Verifying Groundedness..."):
             try:
-                response = requests.post(API_URL, json={"query": query}, timeout=120)
-                if response.status_code == 200:
-                    data = response.json()
-                    ans = data.get("final_answer", "")
-                    conf = data.get("confidence_score", 0.0)
-                    chunks = data.get("retrieved_context_chunks", [])
-                    
-                    st.markdown(ans)
-                    st.caption(f"**Grounding Confidence Score:** {conf:.2f}")
-                    
-                    if chunks:
-                        with st.expander(f"📚 Retrieved Context ({len(chunks)} chunks)"):
-                            for i, chunk in enumerate(chunks):
-                                st.markdown(f"**Chunk #{i+1}**\n{chunk}")
-                                st.divider()
-                                
-                    st.session_state.messages.append({
-                        "role": "assistant", 
-                        "content": ans,
-                        "confidence": conf,
-                        "chunks": chunks
-                    })
-                else:
-                    st.error(f"Error {response.status_code}: {response.text}")
-            except requests.exceptions.ConnectionError:
-                st.error("Cannot connect to backend. Make sure FastAPI is running on port 8000.")
+                # Call LangGraph directly instead of via FastAPI
+                data = query_rag(query)
+                
+                ans = data.get("final_answer", "")
+                conf = data.get("confidence_score", 0.0)
+                chunks = data.get("retrieved_context_chunks", [])
+                
+                st.markdown(ans)
+                st.caption(f"**Grounding Confidence Score:** {conf:.2f}")
+                
+                if chunks:
+                    with st.expander(f"📚 Retrieved Context ({len(chunks)} chunks)"):
+                        for i, chunk in enumerate(chunks):
+                            st.markdown(f"**Chunk #{i+1}**\n{chunk}")
+                            st.divider()
+                            
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": ans,
+                    "confidence": conf,
+                    "chunks": chunks
+                })
             except Exception as e:
-                st.error(f"Request failed: {str(e)}")
+                st.error(f"Execution failed: {str(e)}")
