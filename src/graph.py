@@ -393,7 +393,8 @@ def route_after_grade4(state: RAGState4) -> str:
 
 
 def _chat(messages, **kw):
-    return client.chat.completions.create(model=CHAT_MODEL, temperature=0, messages=messages, **kw)
+    model = kw.pop("model", CHAT_MODEL)
+    return client.chat.completions.create(model=model, temperature=0, messages=messages, **kw)
 
 
 
