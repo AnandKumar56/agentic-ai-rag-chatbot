@@ -3,43 +3,93 @@ import requests
 
 API_URL = "http://127.0.0.1:8000/chat"
 
-st.set_page_config(page_title="Agentic AI RAG Chatbot", layout="wide")
+st.set_page_config(page_title="Agentic AI RAG Chatbot", page_icon="🤖", layout="wide")
 
-st.title("Agentic AI Chatbot")
-st.markdown("Ask questions about the **Agentic AI for Executives** eBook.")
+st.title("🤖 Agentic AI RAG Assistant")
+st.markdown("Grounded RAG Assistant based on **'Agentic AI for Executives'** by Konverge AI.")
 
-st.sidebar.title("Sample Queries")
-samples = [
-    "What is the core definition of Agentic AI as outlined in the eBook?",
-    "What are the main architectural components required to build agentic systems?",
-    "What real-world industry use cases for Agentic AI are discussed in the eBook?",
-    "How does Agentic AI differ from traditional generative AI chatbots according to the text?",
-    "What key challenges or limitations of Agentic AI are mentioned in the document?",
-    "What is the capital of France?"
-]
+# Initialize chat history
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-selected_query = st.sidebar.radio("Try a query:", ["(Custom)"] + samples)
+# Sidebar for controls and samples
+with st.sidebar:
+    st.header("💡 Benchmark Sample Queries")
+    st.markdown("Click any question below to test the system's accuracy and grounding.")
+    
+    samples = [
+        "What is the core definition of Agentic AI as outlined in the eBook?",
+        "What are the main architectural components required to build agentic systems?",
+        "What real-world industry use cases for Agentic AI are discussed in the eBook?",
+        "How does Agentic AI differ from traditional generative AI chatbots according to the text?",
+        "What key challenges or limitations of Agentic AI are mentioned in the document?",
+        "Who won the 2022 FIFA World Cup? (Refusal Test)"
+    ]
+    
+    for sample in samples:
+        if st.button(sample, use_container_width=True):
+            st.session_state.preset_query = sample
 
-query_input = st.text_input("Your Query:", value=selected_query if selected_query != "(Custom)" else "")
+    st.divider()
+    st.markdown("### System Specs")
+    st.markdown("🟢 **Backend Status**: Online")
+    st.markdown("🗄️ **Vector DB**: Pinecone Serverless")
+    st.markdown("🧠 **Models**: `text-embedding-3-small`, `gpt-4o-mini`, `gpt-4o` (Judge)")
 
-if st.button("Submit"):
-    if not query_input.strip():
-        st.warning("Please enter a query.")
-    else:
-        with st.spinner("Generating answer..."):
+# Display chat history
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        if "confidence" in message:
+            st.caption(f"**Confidence Score:** {message['confidence']:.2f}")
+        if "chunks" in message and message["chunks"]:
+            with st.expander(f"📚 Retrieved Context ({len(message['chunks'])} chunks)"):
+                for i, chunk in enumerate(message["chunks"]):
+                    st.markdown(f"**Chunk #{i+1}**\n{chunk}")
+                    st.divider()
+
+# Get query (from chat input or preset)
+query = st.chat_input("Ask a question about Agentic AI...")
+
+if "preset_query" in st.session_state:
+    query = st.session_state.preset_query
+    del st.session_state.preset_query
+
+if query:
+    # Add user message to state and display
+    st.session_state.messages.append({"role": "user", "content": query})
+    with st.chat_message("user"):
+        st.markdown(query)
+
+    # Process assistant response
+    with st.chat_message("assistant"):
+        with st.spinner("Retrieving -> Expanding Queries -> Generating -> Verifying Groundedness..."):
             try:
-                response = requests.post(API_URL, json={"query": query_input}, timeout=120)
+                response = requests.post(API_URL, json={"query": query}, timeout=120)
                 if response.status_code == 200:
                     data = response.json()
-                    st.markdown("### Answer")
-                    st.write(data["final_answer"])
-                    st.markdown(f"**Confidence Score:** {data['confidence_score']:.2f}")
+                    ans = data.get("final_answer", "")
+                    conf = data.get("confidence_score", 0.0)
+                    chunks = data.get("retrieved_context_chunks", [])
                     
-                    with st.expander("Retrieved Context Chunks"):
-                        for i, chunk in enumerate(data.get("retrieved_context_chunks", [])):
-                            st.markdown(f"**Chunk {i+1}:**")
-                            st.write(chunk)
+                    st.markdown(ans)
+                    st.caption(f"**Grounding Confidence Score:** {conf:.2f}")
+                    
+                    if chunks:
+                        with st.expander(f"📚 Retrieved Context ({len(chunks)} chunks)"):
+                            for i, chunk in enumerate(chunks):
+                                st.markdown(f"**Chunk #{i+1}**\n{chunk}")
+                                st.divider()
+                                
+                    st.session_state.messages.append({
+                        "role": "assistant", 
+                        "content": ans,
+                        "confidence": conf,
+                        "chunks": chunks
+                    })
                 else:
                     st.error(f"Error {response.status_code}: {response.text}")
+            except requests.exceptions.ConnectionError:
+                st.error("Cannot connect to backend. Make sure FastAPI is running on port 8000.")
             except Exception as e:
-                st.error(f"Request failed: {e}")
+                st.error(f"Request failed: {str(e)}")
